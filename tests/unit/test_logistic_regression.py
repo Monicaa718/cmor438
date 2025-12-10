@@ -3,12 +3,11 @@ import sys
 import unittest
 import numpy as np
 
-# 1. Make sure we can import from src/
 SRC_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src"))
 if SRC_PATH not in sys.path:
     sys.path.append(SRC_PATH)
 
-# 2. NOW IMPORT YOUR MODULE (Must happen AFTER step 1)
+
 from rice_ml.supervised_learning.logistic_regression import LogisticRegression
 
 
