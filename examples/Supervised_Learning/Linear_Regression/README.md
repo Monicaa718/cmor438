@@ -11,15 +11,16 @@ Linear Regression is a fundamental supervised learning algorithm used to model t
 relationship between a set of input features \(X\) and a continuous output variable \(y\).
 The model assumes a linear relationship of the form:
 
-\[
-y = \beta_0 + \beta_1 x_1 + \cdots + \beta_d x_d + \epsilon
-\]
+y = β₀ + β₁ x₁ + β₂ x₂ + ⋯ + β_d x_d + ε
+
 
 where:
 
-- \( \beta_0 \) is the intercept  
-- \( \beta_i \) are the learned coefficients (slopes)  
-- \( \epsilon \) represents noise or unexplained variance  
+- **β₀** is the intercept  
+- **βᵢ** are the learned coefficients (slopes)  
+- **ε** represents noise or unexplained variance  
+
+The goal is to find parameters β that minimize prediction error.
 
 The goal of linear regression is to estimate the coefficients \( \beta \) that best
 fit the data.
@@ -30,21 +31,17 @@ fit the data.
 
 The model is trained by minimizing the **Ordinary Least Squares (OLS)** loss:
 
-\[
-\min_{\beta} \| y - X\beta \|_2^2
-\]
+minimize || y - Xβ ||²
 
 This optimization problem has a closed-form solution:
 
-\[
-\hat{\beta} = (X^\top X)^{-1} X^\top y
-\]
+β̂ = (Xᵀ X)⁻¹ Xᵀ y
 
 In practice, implementations may also:
 
 - add an intercept term  
 - standardize features  
-- use numerical solvers if \(X^\top X\) is not invertible  
+- use numerical solvers when (XᵀX) is not invertible  
 
 ---
 
@@ -69,13 +66,11 @@ The `LinearRegression` class in this project includes:
 
 ### Notes on Intercept Handling
 
-If `fit_intercept=True`, a column of ones is added to \(X\) before solving OLS:
+If `fit_intercept=True`, a column of ones is added to X:
 
-\[
-X' = [\mathbf{1}, X]
-\]
+X' = [1, X]
 
-This allows the model to learn \( \beta_0 \).
+This allows the model to learn β₀ (the intercept).
 
 ---
 
