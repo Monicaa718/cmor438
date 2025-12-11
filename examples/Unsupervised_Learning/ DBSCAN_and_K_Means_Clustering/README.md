@@ -33,5 +33,12 @@
 	- Cons: Requires `k`; assumes spherical clusters; sensitive to initialization and scale.
 
 ## Data
-
-_TODO: Describe the input features, labels (if any), and how datasets are loaded or preprocessed for DBSCAN and K-means Clustering._
+- Source: Classic Iris dataset loaded via `sklearn.datasets.load_iris()`.
+- Features: 4 numerical attributes per sample — `sepal length`, `sepal width`, `petal length`, `petal width` (all in centimeters).
+- Samples: 150 total across three species (`setosa`, `versicolor`, `virginica`).
+- Labels: Available in the dataset but not used by DBSCAN or K-Means during training; they can be used later for qualitative comparison.
+- Preprocessing: Z-score standardization applied feature-wise: `X_std = (X - mean) / std`. This ensures both algorithms are scale-invariant and prevents any single feature from dominating distance calculations.
+- Parameters used in notebook:
+	- DBSCAN: `eps=0.6`, `min_samples=6` on standardized features.
+	- K-Means: `k=3`, `max_iters=100`, `tol=1e-4`, with random seed set to `42` for reproducibility.
+- Notes: Iris has overlap between `versicolor` and `virginica` in feature space. DBSCAN may merge these into one dense region depending on `eps`/`min_samples`, while K-Means partitions into `k=3` compact clusters regardless of overlap.
