@@ -32,23 +32,6 @@
 	- Pros: Simple, fast, scalable; good for compact, well-separated clusters.
 	- Cons: Requires `k`; assumes spherical clusters; sensitive to initialization and scale.
 
-## This Folder
-- Notebook: `DBSCAN_and_K_Means_Clustering.ipynb` implements preprocessing and both algorithms from scratch, runs them on synthetic standardized data, and compares results with simple internal metrics.
-
-## How to Run
-1. Open the notebook: `examples/Unsupervised_Learning/ DBSCAN_and_K_Means_Clustering/DBSCAN_and_K_Means_Clustering.ipynb`.
-2. Run cells top-to-bottom in a Python 3 environment. No external clustering packages are required; only `numpy` is used.
-
-## References
-- Ester et al. (1996). A Density-Based Algorithm for Discovering Clusters in Large Spatial Databases with Noise.
-- MacQueen (1967). Some Methods for classification and Analysis of Multivariate Observations.
-This directory contains example code and notes for the DBSCAN and K-means clustering algorithm
-in unsupervised learning.
-
-## Algorithm
-
-_TODO: Describe the core idea of DBSCAN and K-menas Clustering, its objective, and key hyperparameters._
-
 ## Data
 
 _TODO: Describe the input features, labels (if any), and how datasets are loaded or preprocessed for DBSCAN and K-means Clustering._
