@@ -1,2 +1,2 @@
 from .distance_metrics import *
-from .knn import *
+from .k_nearest_neighbors import *
