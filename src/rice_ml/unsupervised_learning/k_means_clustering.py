@@ -15,7 +15,28 @@ def kmeans(X: np.ndarray, k: int, max_iters: int = 100, tol: float = 1e-4):
     - labels: array of cluster assignments per sample
     - centers: (k, n_features) array of final cluster centers
     """
+    # Input validation
+    if not isinstance(X, np.ndarray):
+        raise TypeError("X must be a numpy.ndarray")
+    if X.ndim != 2:
+        raise ValueError("X must be a 2D array")
+    if not np.issubdtype(X.dtype, np.number):
+        raise TypeError("X must contain numeric values")
     n, d = X.shape
+    if not isinstance(k, int) or isinstance(k, bool):
+        raise TypeError("k must be an integer")
+    if k <= 0:
+        raise ValueError("k must be positive")
+    if k > n:
+        raise ValueError("k cannot be greater than the number of samples")
+    if not isinstance(max_iters, int) or isinstance(max_iters, bool):
+        raise TypeError("max_iters must be an integer")
+    if max_iters <= 0:
+        raise ValueError("max_iters must be positive")
+    if not (isinstance(tol, float) or isinstance(tol, int)):
+        raise TypeError("tol must be a float or int")
+    if tol <= 0:
+        raise ValueError("tol must be positive")
     idx = np.random.choice(n, k, replace=False)
     centers = X[idx].copy()
     labels = np.zeros(n, dtype=int)
