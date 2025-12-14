@@ -4,7 +4,28 @@ from ..supervised_learning.distance_metrics import euclidean_distance
 
 
 def pairwise_distances(X: np.ndarray) -> np.ndarray:
-    """Compute pairwise Euclidean distances using the shared distance function."""
+    """
+    Compute the pairwise Euclidean distances between rows of a data matrix.
+
+    Parameters
+    ----------
+    X : np.ndarray of shape (n_samples, n_features)
+        Input data matrix where each row corresponds to a sample and each column to a feature.
+
+    Returns
+    -------
+    D : np.ndarray of shape (n_samples, n_samples)
+        Symmetric matrix of pairwise Euclidean distances. D[i, j] is the distance between X[i] and X[j].
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> X = np.array([[0, 0], [1, 0], [0, 1]])
+    >>> pairwise_distances(X)
+    array([[0.        , 1.        , 1.        ],
+           [1.        , 0.        , 1.41421356],
+           [1.        , 1.41421356, 0.        ]])
+    """
     n = X.shape[0]
     D = np.zeros((n, n), dtype=float)
     for i in range(n):
