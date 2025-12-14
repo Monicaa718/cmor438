@@ -2,6 +2,7 @@ import numpy as np
 from collections import deque
 from ..supervised_learning.distance_metrics import euclidean_distance
 
+__all__ = ["dbscan"]
 
 def pairwise_distances(X: np.ndarray) -> np.ndarray:
     """
