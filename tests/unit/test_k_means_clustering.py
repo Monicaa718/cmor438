@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 
 from rice_ml.unsupervised_learning.k_means_clustering import kmeans
 
