@@ -22,16 +22,23 @@ def neighbors_within_eps(D: np.ndarray, i: int, eps: float) -> np.ndarray:
 
 def dbscan(X: np.ndarray, eps: float = 0.5, min_samples: int = 5):
     """
-    Density-Based Spatial Clustering of Applications with Noise.
+    Density-Based Spatial Clustering of Applications with Noise (DBSCAN).
 
     Parameters
-    - X: (n_samples, n_features) data matrix
-    - eps: neighborhood radius
-    - min_samples: minimum number of points to form a dense region
+    ----------
+    X : np.ndarray
+        Data matrix of shape (n_samples, n_features).
+    eps : float, optional
+        Neighborhood radius. Points within this distance are considered neighbors. Default is 0.5.
+    min_samples : int, optional
+        Minimum number of points required to form a dense region (core point). Default is 5.
 
     Returns
-    - labels: array of length n_samples with cluster id, -1 for noise
-    - n_clusters: number of discovered clusters
+    -------
+    labels : np.ndarray
+        Array of shape (n_samples,) with cluster labels. Noise points are labeled as -1.
+    n_clusters : int
+        Number of discovered clusters.
     """
     n = X.shape[0]
     D = pairwise_distances(X)
