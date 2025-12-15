@@ -1,9 +1,3 @@
----
-output:
-  html_document: default
-  word_document: default
----
-
 # Perceptron
 
 This directory contains example code and notes for the **Perceptron algorithm** in supervised learning.
