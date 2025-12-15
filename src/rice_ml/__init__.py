@@ -1,4 +1,5 @@
 from .processing import *
+from .unsupervised_learning import *
 from .supervised_learning import *
 
 from .supervised_learning.linear_regression import LinearRegression
