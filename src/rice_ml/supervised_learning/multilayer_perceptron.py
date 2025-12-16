@@ -1,7 +1,4 @@
 # mlp.py
-# --------------------------------
-# Simple MLP implemented in numpy
-# --------------------------------
 
 import numpy as np
 
@@ -38,7 +35,7 @@ def one_hot(y, num_classes=10):
 
 class SimpleMLP:
     """
-    A minimal 1-hidden-layer MLP for MNIST.
+    A 1-hidden-layer MLP for MNIST.
     Architecture:
         Input (784)
             -> Dense Layer (hidden_dim)
@@ -86,7 +83,7 @@ class SimpleMLP:
         m = X.shape[0]
 
         # Output layer gradient
-        dz2 = self.a2 - y_onehot                 # (batch, 10)
+        dz2 = self.a2 - y_onehot                 # (batch, output_dim)
         dW2 = (self.a1.T @ dz2) / m
         db2 = np.sum(dz2, axis=0, keepdims=True) / m
 
@@ -115,7 +112,7 @@ class SimpleMLP:
     # -------- Training Loop -------- #
 
     def train(self, X, y, epochs=5, batch_size=64):
-        y_onehot = one_hot(y, num_classes=10)
+        y_onehot = one_hot(y, num_classes=self.W2.shape[1])
 
         for epoch in range(epochs):
             # Shuffle dataset
@@ -138,6 +135,13 @@ class SimpleMLP:
 
     # -------- Prediction -------- #
 
+    # def predict(self, X):
+    #     probs = self.forward(X)
+    #     return np.argmax(probs, axis=1)
+
     def predict(self, X):
+        X = np.asarray(X)
+        if X.shape[1] != self.W1.shape[0]:
+            raise ValueError("Input feature dimension mismatch.")
         probs = self.forward(X)
         return np.argmax(probs, axis=1)
