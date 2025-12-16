@@ -89,7 +89,6 @@ $$
 - Smoother gradients improve stability during backpropagation  
 
 Empirically, replacing ReLU with `tanh` leads to more stable optimization and improved feature learning in early layers.
-?????
 
 ---
 
