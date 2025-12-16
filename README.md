@@ -72,6 +72,7 @@ This repository is a collaborative effort by the following team members:
 - **Benjamin Mao**
 - **Cynthia Liu**
 - **Monica Liu**
+- **Xinlin Wang**
 
 ---
 
