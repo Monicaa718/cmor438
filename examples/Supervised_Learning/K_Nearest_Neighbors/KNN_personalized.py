@@ -1,4 +1,3 @@
-# file name : k_nearest_neighbors.py
 """
 k-Nearest Neighbors (NumPy-only).
 
@@ -6,7 +5,7 @@ This module provides simple, dependency-free KNN models suitable for teaching
 and lightweight usage. It supports:
 - Classification (`KNNClassifier`) with `predict` and `predict_proba`
 - Regression (`KNNRegressor`) with `predict`
-- Distance metrics: 'euclidean', 'manhattan'
+- Distance metrics: 'euclidean', 'manhattan', 'chebyshev'
 - Weighting: 'uniform' or 'distance'
 - Convenience methods: `kneighbors`, `score`
 
@@ -89,13 +88,13 @@ def _rng_from_seed(seed: Optional[int]) -> np.random.Generator:
 
 def _validate_common_params(
     n_neighbors: int,
-    metric: Literal["euclidean", "manhattan"],
+    metric: Literal["euclidean", "manhattan", "chebyshev"],
     weights: Literal["uniform", "distance"],
 ) -> None:
     if not isinstance(n_neighbors, (int, np.integer)) or n_neighbors < 1:
         raise ValueError("n_neighbors must be a positive integer.")
-    if metric not in ("euclidean", "manhattan"):
-        raise ValueError("metric must be 'euclidean' or 'manhattan'.")
+    if metric not in ("euclidean", "manhattan", "chebyshev"):
+        raise ValueError("metric must be 'euclidean', 'manhattan', or 'chebyshev.")
     if weights not in ("uniform", "distance"):
         raise ValueError("weights must be 'uniform' or 'distance'.")
 
@@ -108,7 +107,7 @@ def _pairwise_distances(XA: np.ndarray, XB: np.ndarray, metric: str) -> np.ndarr
     ----------
     XA, XB : ndarray, shape (n_a, d), (n_b, d)
         Input matrices.
-    metric : {"euclidean", "manhattan"}
+    metric : {"euclidean", "manhattan", "chebyshev"}
         Distance metric.
 
     Returns
@@ -131,6 +130,10 @@ def _pairwise_distances(XA: np.ndarray, XB: np.ndarray, metric: str) -> np.ndarr
         # expand dims for broadcasting: (n_a, 1, d) - (1, n_b, d)
         diff = XA[:, None, :] - XB[None, :, :]
         return np.sum(np.abs(diff), axis=2, dtype=float)
+    elif metric == "chebyshev":
+       # L-infinity norm: max_j |x_j - y_j|
+       diff = XA[:, None, :] - XB[None, :, :]
+       return np.max(np.abs(diff), axis=2).astype(float)
     else:
         # Checked earlier
         raise ValueError("Unsupported metric.")
@@ -206,7 +209,7 @@ class _KNNBase:
         self,
         n_neighbors: int = 5,
         *,
-        metric: Literal["euclidean", "manhattan"] = "euclidean",
+        metric: Literal["euclidean", "manhattan", "chebyshev"] = "euclidean",
         weights: Literal["uniform", "distance"] = "uniform",
     ) -> None:
         _validate_common_params(n_neighbors, metric, weights)
@@ -295,7 +298,7 @@ class KNNClassifier(_KNNBase):
     ----------
     n_neighbors : int, default=5
         Number of neighbors to use.
-    metric : {"euclidean", "manhattan"}, default="euclidean"
+    metric : {"euclidean", "manhattan", "chebyshev"}, default="euclidean"
         Distance metric.
     weights : {"uniform", "distance"}, default="uniform"
         Weighting scheme.
@@ -322,7 +325,7 @@ class KNNClassifier(_KNNBase):
         self,
         n_neighbors: int = 5,
         *,
-        metric: Literal["euclidean", "manhattan"] = "euclidean",
+        metric: Literal["euclidean", "manhattan", "chebyshev"] = "euclidean",
         weights: Literal["uniform", "distance"] = "uniform",
     ) -> None:
         super().__init__(n_neighbors=n_neighbors, metric=metric, weights=weights)
@@ -333,6 +336,7 @@ class KNNClassifier(_KNNBase):
         # Establish class order (sorted unique)
         self.classes_ = np.unique(self._y)
         return self
+    
 
     def predict_proba(self, X: ArrayLike) -> np.ndarray:
         """
@@ -433,7 +437,7 @@ class KNNRegressor(_KNNBase):
     ----------
     n_neighbors : int, default=5
         Number of neighbors to use.
-    metric : {"euclidean", "manhattan"}, default="euclidean"
+    metric : {"euclidean", "manhattan", "chebyshev"}, default="euclidean"
         Distance metric.
     weights : {"uniform", "distance"}, default="uniform"
         Weighting scheme.
