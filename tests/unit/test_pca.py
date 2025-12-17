@@ -2,7 +2,16 @@
 import numpy as np
 import pytest
 
-from pca import PCA
+import numpy as np
+import sys
+import os
+
+src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src'))
+
+if src_path not in sys.path:
+    sys.path.append(src_path)
+
+from rice_ml.unsupervised_learning.pca import PCA
 
 
 def test_pca_fit_attributes_and_shapes():
