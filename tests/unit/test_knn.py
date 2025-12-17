@@ -3,7 +3,20 @@
 import numpy as np
 import pytest
 
-from rice_ml.supervised_learning.knn import KNNClassifier, KNNRegressor
+import numpy as np
+import pytest
+
+import sys
+from pathlib import Path
+
+# add project root to python path
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.append(str(ROOT_DIR))
+
+
+
+from .rice_ml.supervised_learning.k_nearest_neighbors import KNNClassifier, KNNRegressor
 
 # ------------------------ Classifier ------------------------
 
