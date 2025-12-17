@@ -1,8 +1,9 @@
+# file name: test_knn.py
+
 import numpy as np
 import pytest
 
 from rice_ml.supervised_learning.knn import KNNClassifier, KNNRegressor
-
 
 # ------------------------ Classifier ------------------------
 
@@ -20,7 +21,6 @@ def test_classifier_basic_predict_and_proba_uniform_euclidean():
     # class order is sorted(unique) = [0,1]
     assert (proba.argmax(axis=1) == preds).all()
 
-
 def test_classifier_manhattan_distance_weighted():
     X = np.array([[0,0],[2,0],[0,2],[2,2]], dtype=float)
     y = np.array(["A","A","B","B"], dtype=object)
@@ -31,7 +31,6 @@ def test_classifier_manhattan_distance_weighted():
     # predict_proba should be concentrated on A
     p = clf.predict_proba([[0.1, 0.2]])[0]
     assert p[0] > p[1]  # classes_ sorted -> ["A","B"]
-
 
 def test_classifier_errors_and_kneighbors():
     X = np.array([[0,0],[1,1],[2,2]], dtype=float)
@@ -44,13 +43,11 @@ def test_classifier_errors_and_kneighbors():
     d, idx = clf.kneighbors([[1.0, 1.0]])
     assert d.shape == (1, 2) and idx.shape == (1, 2)
 
-
 def test_classifier_score_accuracy():
     X = np.array([[0,0],[0,1],[1,0],[1,1]], dtype=float)
     y = np.array([0,0,1,1])
     clf = KNNClassifier(n_neighbors=1).fit(X, y)
     assert clf.score(X, y) == 1.0
-
 
 def test_classifier_zero_distance_with_distance_weights():
     # exact duplicate point in training -> zero distance handling
@@ -64,7 +61,6 @@ def test_classifier_zero_distance_with_distance_weights():
     # full mass on class 0
     assert np.isclose(p[0], 1.0)
 
-
 # ------------------------ Regressor ------------------------
 
 def test_regressor_basic_predict_and_score():
@@ -77,7 +73,6 @@ def test_regressor_basic_predict_and_score():
     reg2 = KNNRegressor(n_neighbors=1).fit(X, y)
     assert reg2.score(X, y) == 1.0
 
-
 def test_regressor_input_errors():
     X = np.array([[0],[1],[2]], dtype=float)
     y = np.array([0.0, 1.0, 2.0])
@@ -87,7 +82,6 @@ def test_regressor_input_errors():
     # non-numeric y
     with pytest.raises(TypeError):
         KNNRegressor(n_neighbors=1).fit(X, np.array(["a","b","c"], dtype=object))
-
 
 def test_regressor_constant_y_score_error():
     X = np.array([[0],[1],[2]], dtype=float)
