@@ -1,4 +1,3 @@
-# file name : k_nearest_neighbors.py
 """
 k-Nearest Neighbors (NumPy-only).
 
@@ -6,544 +5,311 @@ This module provides simple, dependency-free KNN models suitable for teaching
 and lightweight usage. It supports:
 - Classification (`KNNClassifier`) with `predict` and `predict_proba`
 - Regression (`KNNRegressor`) with `predict`
-- Distance metrics: 'euclidean', 'manhattan'
+- Distance metrics: 'euclidean', 'manhattan', 'chebyshev'
 - Weighting: 'uniform' or 'distance'
 - Convenience methods: `kneighbors`, `score`
 
-Robust error handling and NumPy-style docstrings make this module easy to test
-with doctest/pytest.
+The API is intentionally similar to scikit-learn's KNeighborsClassifier /
+KNeighborsRegressor (fit/predict/predict_proba/kneighbors/score).
 
 Examples
 --------
-Basic classification:
-
 >>> import numpy as np
 >>> from rice_ml.supervised_learning.knn import KNNClassifier
 >>> X = np.array([[0,0],[0,1],[1,0],[1,1]], dtype=float)
 >>> y = np.array([0, 0, 1, 1])
 >>> clf = KNNClassifier(n_neighbors=3, metric="euclidean", weights="uniform").fit(X, y)
->>> clf.predict([[0.1, 0.1]]).tolist()
-[0]
->>> np.round(clf.predict_proba([[0.1, 0.1]]), 2).tolist()
-[[0.67, 0.33]]
-
-Basic regression:
-
->>> from rice_ml.supervised_learning.knn import KNNRegressor
->>> X = np.array([[0],[1],[2],[3]], dtype=float)
->>> y = np.array([0.0, 1.0, 1.5, 3.0])
->>> reg = KNNRegressor(n_neighbors=2, weights="distance").fit(X, y)
->>> round(reg.predict([[1.5]])[0], 4)
-np.float64(1.25)
+>>> clf.predict([[0.1, 0.1], [0.9, 0.9]]).tolist()
+[0, 1]
 """
 
 from __future__ import annotations
-from typing import Literal, Optional, Tuple, Union, Sequence
+
+from dataclasses import dataclass
+from typing import Literal, Optional, Tuple, Union
 
 import numpy as np
 
-__all__ = [
-    'KNNClassifier',
-    'KNNRegressor',
-]
-
-ArrayLike = Union[np.ndarray, Sequence[float], Sequence[Sequence[float]]]
+Metric = Literal["euclidean", "manhattan", "chebyshev"]
+Weights = Literal["uniform", "distance"]
 
 
-# ----------------------------- Helpers & Validation -----------------------------
+def _as_2d_float(X, *, name: str) -> np.ndarray:
+    X = np.asarray(X)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+    if X.ndim != 2:
+        raise ValueError(f"{name} must be a 2D array-like, got shape {X.shape}.")
+    if X.shape[0] == 0 or X.shape[1] == 0:
+        raise ValueError(f"{name} must be non-empty, got shape {X.shape}.")
+    return X.astype(float, copy=False)
 
-def _ensure_2d_float(X: ArrayLike, name: str = "X") -> np.ndarray:
-    """Ensure X is a 2D numeric ndarray of dtype float."""
-    arr = np.asarray(X)
-    if arr.ndim != 2:
-        raise ValueError(f"{name} must be a 2D array; got {arr.ndim}D.")
-    if arr.size == 0:
+
+def _as_1d(y, *, name: str) -> np.ndarray:
+    y = np.asarray(y)
+    if y.ndim != 1:
+        raise ValueError(f"{name} must be a 1D array-like, got shape {y.shape}.")
+    if y.shape[0] == 0:
         raise ValueError(f"{name} must be non-empty.")
-    if not np.issubdtype(arr.dtype, np.number):
-        try:
-            arr = arr.astype(float, copy=False)
-        except (TypeError, ValueError) as e:
-            raise TypeError(f"All elements of {name} must be numeric.") from e
-    else:
-        arr = arr.astype(float, copy=False)
-    return arr
+    return y
 
 
-def _ensure_1d(y, name: str = "y") -> np.ndarray:
-    """Ensure y is a 1D array (labels may be any dtype for classifier; numeric for regressor)."""
-    arr = np.asarray(y)
-    if arr.ndim != 1:
-        raise ValueError(f"{name} must be 1D; got {arr.ndim}D.")
-    if arr.size == 0:
-        raise ValueError(f"{name} must be non-empty.")
-    return arr
+def _check_n_neighbors(n_neighbors: int) -> int:
+    if not isinstance(n_neighbors, (int, np.integer)):
+        raise TypeError("n_neighbors must be an int.")
+    n_neighbors = int(n_neighbors)
+    if n_neighbors < 1:
+        raise ValueError("n_neighbors must be >= 1.")
+    return n_neighbors
 
 
-def _rng_from_seed(seed: Optional[int]) -> np.random.Generator:
-    if seed is None:
-        return np.random.default_rng()
-    if not isinstance(seed, (int, np.integer)):
-        raise TypeError("random_state must be an integer or None.")
-    return np.random.default_rng(int(seed))
+def _check_metric(metric: str) -> Metric:
+    if metric not in ("euclidean", "manhattan", "chebyshev"):
+        raise ValueError("metric must be one of {'euclidean','manhattan','chebyshev'}.")
+    return metric  # type: ignore[return-value]
 
 
-def _validate_common_params(
-    n_neighbors: int,
-    metric: Literal["euclidean", "manhattan"],
-    weights: Literal["uniform", "distance"],
-) -> None:
-    if not isinstance(n_neighbors, (int, np.integer)) or n_neighbors < 1:
-        raise ValueError("n_neighbors must be a positive integer.")
-    if metric not in ("euclidean", "manhattan"):
-        raise ValueError("metric must be 'euclidean' or 'manhattan'.")
+def _check_weights(weights: str) -> Weights:
     if weights not in ("uniform", "distance"):
-        raise ValueError("weights must be 'uniform' or 'distance'.")
+        raise ValueError("weights must be one of {'uniform','distance'}.")
+    return weights  # type: ignore[return-value]
 
 
-def _pairwise_distances(XA: np.ndarray, XB: np.ndarray, metric: str) -> np.ndarray:
+def _pairwise_distances(Xq: np.ndarray, Xt: np.ndarray, metric: Metric) -> np.ndarray:
     """
-    Compute pairwise distances between rows of XA and XB.
+    Compute pairwise distances between query and train samples.
 
-    Parameters
-    ----------
-    XA, XB : ndarray, shape (n_a, d), (n_b, d)
-        Input matrices.
-    metric : {"euclidean", "manhattan"}
-        Distance metric.
-
-    Returns
-    -------
-    D : ndarray, shape (n_a, n_b)
-        Distances.
-
-    Notes
-    -----
-    - Uses vectorized NumPy operations (no Python loops).
+    Xq: (n_query, n_features)
+    Xt: (n_train, n_features)
+    Returns: (n_query, n_train)
     """
+    diff = Xq[:, None, :] - Xt[None, :, :]  # (nq, nt, d)
+
     if metric == "euclidean":
-        # ||a-b||^2 = ||a||^2 + ||b||^2 - 2 a·b -> then sqrt
-        aa = np.sum(XA * XA, axis=1, keepdims=True)       # (n_a, 1)
-        bb = np.sum(XB * XB, axis=1, keepdims=True).T     # (1, n_b)
-        # numerical stability: distances can't be negative
-        D2 = np.maximum(aa + bb - 2.0 * XA @ XB.T, 0.0)
-        return np.sqrt(D2, dtype=float)
-    elif metric == "manhattan":
-        # expand dims for broadcasting: (n_a, 1, d) - (1, n_b, d)
-        diff = XA[:, None, :] - XB[None, :, :]
-        return np.sum(np.abs(diff), axis=2, dtype=float)
-    else:
-        # Checked earlier
-        raise ValueError("Unsupported metric.")
+        return np.sqrt(np.sum(diff * diff, axis=2))
+    if metric == "manhattan":
+        return np.sum(np.abs(diff), axis=2)
+    # chebyshev
+    return np.max(np.abs(diff), axis=2)
 
 
-def _neighbors(X_train: np.ndarray, X_query: np.ndarray, n_neighbors: int, metric: str) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Return (distances, indices) of the n_neighbors nearest neighbors in the training set for each query.
-    Distances/indices are sorted per query row.
+def _r2_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    y_true = np.asarray(y_true, dtype=float)
+    y_pred = np.asarray(y_pred, dtype=float)
+    if y_true.shape != y_pred.shape:
+        raise ValueError("y_true and y_pred must have the same shape for R^2.")
 
-    Returns
-    -------
-    distances : ndarray, shape (n_query, n_neighbors)
-    indices   : ndarray, shape (n_query, n_neighbors)
-    """
-    D = _pairwise_distances(X_query, X_train, metric)  # (nq, n_train)
-    if n_neighbors > X_train.shape[0]:
-        raise ValueError(f"n_neighbors={n_neighbors} cannot exceed number of training samples={X_train.shape[0]}.")
-    # argsort along columns to get nearest neighbors
-    idx = np.argpartition(D, kth=n_neighbors - 1, axis=1)[:, :n_neighbors]
-    # sort those neighbors by distance
-    row_indices = np.arange(D.shape[0])[:, None]
-    dsel = D[row_indices, idx]
-    order = np.argsort(dsel, axis=1)
-    idx_sorted = idx[row_indices, order]
-    d_sorted = dsel[row_indices, order]
-    return d_sorted, idx_sorted
+    ss_res = float(np.sum((y_true - y_pred) ** 2))
+    y_mean = float(np.mean(y_true))
+    ss_tot = float(np.sum((y_true - y_mean) ** 2))
+
+    # sklearn-like handling for constant y_true:
+    # - if ss_tot == 0 and predictions are perfect => 1.0
+    # - else => 0.0
+    if ss_tot == 0.0:
+        return 1.0 if ss_res == 0.0 else 0.0
+    return 1.0 - ss_res / ss_tot
 
 
-def _weights_from_distances(dist: np.ndarray, scheme: str, eps: float = 1e-12) -> np.ndarray:
-    """
-    Compute neighbor weights from distances.
-
-    - uniform: all 1s
-    - distance: 1 / d, but if any d==0 for a query, give weight 1 to d==0 neighbors and 0 to others.
-
-    Parameters
-    ----------
-    dist : ndarray, shape (n_query, k)
-        Neighbor distances per query.
-    scheme : {"uniform", "distance"}
-        Weighting method.
-    eps : float, default=1e-12
-        For numerical stability when inverting distances.
-
-    Returns
-    -------
-    w : ndarray, shape (n_query, k)
-        Non-negative weights (not normalized).
-    """
-    if scheme == "uniform":
-        return np.ones_like(dist, dtype=float)
-
-    # distance weighting
-    zero_mask = (dist <= eps)
-    w = np.empty_like(dist, dtype=float)
-    # If any exact duplicate neighbors exist, restrict weights to them
-    any_zero = zero_mask.any(axis=1)
-    if np.any(any_zero):
-        w[any_zero] = zero_mask[any_zero].astype(float)
-    # Otherwise, inverse distance
-    if np.any(~any_zero):
-        w[~any_zero] = 1.0 / np.maximum(dist[~any_zero], eps)
-    return w
-
-
-# ---------------------------------- Base ----------------------------------
-
+@dataclass
 class _KNNBase:
-    """Shared functionality for KNN models."""
+    n_neighbors: int = 5
+    metric: Metric = "euclidean"
+    weights: Weights = "uniform"
 
-    def __init__(
-        self,
-        n_neighbors: int = 5,
-        *,
-        metric: Literal["euclidean", "manhattan"] = "euclidean",
-        weights: Literal["uniform", "distance"] = "uniform",
-    ) -> None:
-        _validate_common_params(n_neighbors, metric, weights)
-        self.n_neighbors = int(n_neighbors)
-        self.metric = metric
-        self.weights = weights
-        self._X: Optional[np.ndarray] = None  # fitted features
-        self._y: Optional[np.ndarray] = None  # fitted targets/labels
+    def __post_init__(self) -> None:
+        self.n_neighbors = _check_n_neighbors(self.n_neighbors)
+        self.metric = _check_metric(self.metric)
+        self.weights = _check_weights(self.weights)
 
-    # ---------------- API ----------------
+        self.X_: Optional[np.ndarray] = None
+        self.y_: Optional[np.ndarray] = None
 
-    def fit(self, X: ArrayLike, y: ArrayLike):
-        """
-        Fit the model.
+    def fit(self, X, y):
+        X = _as_2d_float(X, name="X")
+        y = _as_1d(y, name="y")
+        if X.shape[0] != y.shape[0]:
+            raise ValueError("X and y must have the same number of rows.")
+        if self.n_neighbors > X.shape[0]:
+            raise ValueError(
+                f"n_neighbors={self.n_neighbors} cannot exceed n_samples={X.shape[0]}."
+            )
 
-        Parameters
-        ----------
-        X : array_like, shape (n_samples, n_features)
-            Training features.
-        y : array_like, shape (n_samples,)
-            Training targets (regression) or labels (classification).
-
-        Returns
-        -------
-        self
-
-        Raises
-        ------
-        ValueError
-            If shapes are invalid.
-        TypeError
-            If X is not numeric.
-        """
-        X_arr = _ensure_2d_float(X, "X")
-        y_arr = _ensure_1d(y, "y")
-        if len(y_arr) != X_arr.shape[0]:
-            raise ValueError(f"X and y length mismatch: len(y)={len(y_arr)} vs X.shape[0]={X_arr.shape[0]}")
-        if self.n_neighbors > X_arr.shape[0]:
-            raise ValueError("n_neighbors cannot exceed the number of training samples.")
-        self._X = X_arr
-        self._y = y_arr
+        self.X_ = X
+        self.y_ = y
         return self
 
     def _check_is_fitted(self) -> Tuple[np.ndarray, np.ndarray]:
-        if self._X is None or self._y is None:
-            raise RuntimeError("Model is not fitted. Call fit(X, y) first.")
-        return self._X, self._y
+        if self.X_ is None or self.y_ is None:
+            raise ValueError("This estimator is not fitted yet. Call 'fit' first.")
+        return self.X_, self.y_
 
-    def kneighbors(self, X: ArrayLike) -> Tuple[np.ndarray, np.ndarray]:
+    def kneighbors(self, X, n_neighbors: Optional[int] = None, return_distance: bool = True):
         """
-        Find the nearest neighbors of the provided samples.
+        Find k-nearest neighbors of X.
 
         Parameters
         ----------
-        X : array_like, shape (n_query, n_features)
-            Query samples.
+        X : array-like of shape (n_query, n_features)
+        n_neighbors : int or None
+            If None, uses self.n_neighbors.
+        return_distance : bool
+            If True, return (distances, indices). Else return indices.
 
         Returns
         -------
-        distances : ndarray, shape (n_query, n_neighbors)
-            Distances to neighbors.
-        indices : ndarray, shape (n_query, n_neighbors)
-            Indices of neighbors in the training set.
-
-        Raises
-        ------
-        RuntimeError
-            If called before fit.
-        ValueError, TypeError
-            On invalid X.
+        distances : ndarray of shape (n_query, k)
+        indices : ndarray of shape (n_query, k)
+        OR
+        indices : ndarray of shape (n_query, k)
         """
-        X_train, _ = self._check_is_fitted()
-        Xq = _ensure_2d_float(X, "X")
-        if Xq.shape[1] != X_train.shape[1]:
-            raise ValueError(f"X has {Xq.shape[1]} features, expected {X_train.shape[1]}.")
-        return _neighbors(X_train, Xq, self.n_neighbors, self.metric)
+        Xt, _ = self._check_is_fitted()
+        Xq = _as_2d_float(X, name="X")
+        if Xq.shape[1] != Xt.shape[1]:
+            raise ValueError(
+                f"X must have the same n_features as training data: "
+                f"{Xq.shape[1]} != {Xt.shape[1]}"
+            )
 
+        k = self.n_neighbors if n_neighbors is None else _check_n_neighbors(n_neighbors)
+        if k > Xt.shape[0]:
+            raise ValueError(f"n_neighbors={k} cannot exceed n_samples={Xt.shape[0]}.")
 
-# -------------------------------- Classifier --------------------------------
+        D = _pairwise_distances(Xq, Xt, metric=self.metric)  # (nq, nt)
+
+        # argpartition for top-k, then sort those k
+        idx_part = np.argpartition(D, kth=k - 1, axis=1)[:, :k]  # (nq, k)
+        dist_part = np.take_along_axis(D, idx_part, axis=1)
+
+        order = np.argsort(dist_part, axis=1)
+        idx = np.take_along_axis(idx_part, order, axis=1)
+        dist = np.take_along_axis(dist_part, order, axis=1)
+
+        if return_distance:
+            return dist, idx
+        return idx
+
 
 class KNNClassifier(_KNNBase):
     """
-    k-Nearest Neighbors classifier.
+    kNN classifier (NumPy-only), sklearn-like API.
 
-    Parameters
-    ----------
-    n_neighbors : int, default=5
-        Number of neighbors to use.
-    metric : {"euclidean", "manhattan"}, default="euclidean"
-        Distance metric.
-    weights : {"uniform", "distance"}, default="uniform"
-        Weighting scheme.
-
-    Notes
-    -----
-    - `predict_proba` returns class probabilities ordered by sorted class labels.
-    - When `weights="distance"` and a query has any zero-distance neighbors,
-      only those neighbors are used (uniformly) to avoid division-by-zero.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> X = np.array([[0,0],[0,1],[1,0],[1,1]], dtype=float)
-    >>> y = np.array([0, 0, 1, 1])
-    >>> clf = KNNClassifier(n_neighbors=3, metric="euclidean", weights="uniform").fit(X, y)
-    >>> clf.predict([[0.1, 0.1]]).tolist()
-    [0]
-    >>> np.round(clf.predict_proba([[0.1, 0.1]]), 2).tolist()
-    [[0.67, 0.33]]
+    Attributes after fit
+    --------------------
+    classes_ : ndarray of shape (n_classes,)
     """
 
-    def __init__(
-        self,
-        n_neighbors: int = 5,
-        *,
-        metric: Literal["euclidean", "manhattan"] = "euclidean",
-        weights: Literal["uniform", "distance"] = "uniform",
-    ) -> None:
-        super().__init__(n_neighbors=n_neighbors, metric=metric, weights=weights)
-        self.classes_: Optional[np.ndarray] = None  # learned label set (sorted)
-
-    def fit(self, X: ArrayLike, y: ArrayLike) -> "KNNClassifier":
+    def fit(self, X, y):
         super().fit(X, y)
-        # Establish class order (sorted unique)
-        self.classes_ = np.unique(self._y)
+        _, y_arr = self._check_is_fitted()
+        self.classes_ = np.unique(y_arr)
         return self
 
-    def predict_proba(self, X: ArrayLike) -> np.ndarray:
-        """
-        Predict class probabilities.
+    def predict_proba(self, X):
+        Xt, y = self._check_is_fitted()
+        if not hasattr(self, "classes_"):
+            self.classes_ = np.unique(y)
 
-        Parameters
-        ----------
-        X : array_like, shape (n_query, n_features)
-            Query samples.
+        dist, idx = self.kneighbors(X, return_distance=True)
+        y_nn = y[idx]  # (nq, k)
 
-        Returns
-        -------
-        proba : ndarray, shape (n_query, n_classes)
-            Probabilities per class (ordered as `classes_`).
+        classes = self.classes_
+        # encode y onto 0..C-1 (based on classes_)
+        class_to_index = {c: i for i, c in enumerate(classes)}
+        y_nn_enc = np.vectorize(class_to_index.get, otypes=[int])(y_nn)
 
-        Raises
-        ------
-        RuntimeError
-            If called before fit.
-        """
-        X_train, y_train = self._check_is_fitted()
-        if self.classes_ is None:
-            raise RuntimeError("Model is not fitted.")
-        Xq = _ensure_2d_float(X, "X")
-        if Xq.shape[1] != X_train.shape[1]:
-            raise ValueError(f"X has {Xq.shape[1]} features, expected {X_train.shape[1]}.")
+        nq, k = y_nn_enc.shape
+        C = classes.shape[0]
+        proba = np.zeros((nq, C), dtype=float)
 
-        dist, idx = _neighbors(X_train, Xq, self.n_neighbors, self.metric)
-        w = _weights_from_distances(dist, self.weights)
+        if self.weights == "uniform":
+            for i in range(nq):
+                counts = np.bincount(y_nn_enc[i], minlength=C).astype(float)
+                proba[i] = counts / counts.sum()
+            return proba
 
-        # Vote per class
-        n_query = Xq.shape[0]
-        n_classes = len(self.classes_)
-        proba = np.zeros((n_query, n_classes), dtype=float)
+        # distance weights
+        for i in range(nq):
+            di = dist[i]
+            yi = y_nn_enc[i]
 
-        # map neighbor labels to class indices
-        # y_train arbitrary dtype; use searchsorted on sorted classes_
-        # (classes_ is sorted because of np.unique)
-        for i in range(n_query):
-            neigh_labels = y_train[idx[i]]
-            class_ids = np.searchsorted(self.classes_, neigh_labels)
-            # sum weights per class
-            # (vectorized bincount on per-row basis)
-            counts = np.bincount(class_ids, weights=w[i], minlength=n_classes)
-            total = counts.sum()
-            if total == 0:
-                # all weights zero (shouldn't happen), fallback uniform
-                proba[i] = 1.0 / n_classes
+            zero_mask = di == 0.0
+            if np.any(zero_mask):
+                yi0 = yi[zero_mask]
+                counts = np.bincount(yi0, minlength=C).astype(float)
+                proba[i] = counts / counts.sum()
             else:
-                proba[i] = counts / total
+                w = 1.0 / di
+                for cls_idx, wi in zip(yi, w):
+                    proba[i, cls_idx] += wi
+                proba[i] /= proba[i].sum()
+
         return proba
 
-    def predict(self, X: ArrayLike) -> np.ndarray:
-        """
-        Predict the most probable class.
-
-        Returns
-        -------
-        y_pred : ndarray, shape (n_query,)
-            Predicted labels (same dtype as `classes_`).
-
-        Examples
-        --------
-        >>> import numpy as np
-        >>> X = np.array([[0,0],[1,1],[0,1],[1,0]], dtype=float)
-        >>> y = np.array(["A","B","A","B"], dtype=object)
-        >>> clf = KNNClassifier(n_neighbors=3).fit(X, y)
-        >>> clf.predict([[0.1, 0.2]]).tolist()
-        ['A']
-        """
+    def predict(self, X):
         proba = self.predict_proba(X)
-        best = np.argmax(proba, axis=1)
-        return self.classes_[best]
+        # tie-breaker: argmax returns first max => smaller class index (sorted classes_)
+        return self.classes_[np.argmax(proba, axis=1)]
 
-    def score(self, X: ArrayLike, y: ArrayLike) -> float:
+    def score(self, X, y):
         """
-        Classification accuracy on (X, y).
-
-        Returns
-        -------
-        float
-            Fraction of correct predictions.
+        Classification accuracy.
         """
-        y_true = _ensure_1d(y, "y")
+        y_true = _as_1d(y, name="y")
         y_pred = self.predict(X)
-        if len(y_true) != len(y_pred):
-            raise ValueError("X and y lengths do not match.")
-        return float(np.mean(y_true == y_pred))
+        if y_pred.shape[0] != y_true.shape[0]:
+            raise ValueError("X and y must have compatible lengths.")
+        return float(np.mean(y_pred == y_true))
 
-
-# -------------------------------- Regressor --------------------------------
 
 class KNNRegressor(_KNNBase):
     """
-    k-Nearest Neighbors regressor.
-
-    Parameters
-    ----------
-    n_neighbors : int, default=5
-        Number of neighbors to use.
-    metric : {"euclidean", "manhattan"}, default="euclidean"
-        Distance metric.
-    weights : {"uniform", "distance"}, default="uniform"
-        Weighting scheme.
-
-    Notes
-    -----
-    - With `weights="distance"`, if a query has any zero-distance neighbors,
-      only those neighbors are used (uniformly) to avoid division-by-zero.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> X = np.array([[0],[1],[2],[3]], dtype=float)
-    >>> y = np.array([0.0, 1.0, 1.5, 3.0])
-    >>> reg = KNNRegressor(n_neighbors=2, weights="distance").fit(X, y)
-    >>> round(float(reg.predict([[1.5]])[0]), 4)
-    1.25
+    kNN regressor (NumPy-only), sklearn-like API.
     """
 
-    def fit(self, X: ArrayLike, y: ArrayLike) -> "KNNRegressor":
-        X_arr = _ensure_2d_float(X, "X")
-        y_arr = _ensure_1d(y, "y")
-        # require numeric targets
-        if not np.issubdtype(y_arr.dtype, np.number):
-            try:
-                y_arr = y_arr.astype(float, copy=False)
-            except (TypeError, ValueError) as e:
-                raise TypeError("Regression target values must be numeric.") from e
-        if len(y_arr) != X_arr.shape[0]:
-            raise ValueError(f"X and y length mismatch: len(y)={len(y_arr)} vs X.shape[0]={X_arr.shape[0]}")
-        if self.n_neighbors > X_arr.shape[0]:
-            raise ValueError("n_neighbors cannot exceed the number of training samples.")
-        self._X = X_arr
-        self._y = y_arr.astype(float, copy=False)
+    def fit(self, X, y):
+        X = _as_2d_float(X, name="X")
+        y = np.asarray(y, dtype=float)
+        if y.ndim != 1:
+            raise ValueError("y must be a 1D array-like for regression.")
+        if X.shape[0] != y.shape[0]:
+            raise ValueError("X and y must have the same number of rows.")
+        if self.n_neighbors > X.shape[0]:
+            raise ValueError(
+                f"n_neighbors={self.n_neighbors} cannot exceed n_samples={X.shape[0]}."
+            )
+        self.X_ = X
+        self.y_ = y
         return self
 
-    def predict(self, X: ArrayLike) -> np.ndarray:
+    def predict(self, X):
+        Xt, y = self._check_is_fitted()
+        dist, idx = self.kneighbors(X, return_distance=True)
+        y_nn = y[idx]  # (nq, k)
+
+        if self.weights == "uniform":
+            return np.mean(y_nn, axis=1)
+
+        # distance weights (handle exact match like sklearn)
+        nq = y_nn.shape[0]
+        out = np.empty(nq, dtype=float)
+        for i in range(nq):
+            di = dist[i]
+            yi = y_nn[i]
+            zero_mask = di == 0.0
+            if np.any(zero_mask):
+                out[i] = float(np.mean(yi[zero_mask]))
+            else:
+                w = 1.0 / di
+                out[i] = float(np.sum(w * yi) / np.sum(w))
+        return out
+
+    def score(self, X, y):
         """
-        Predict regression targets.
-
-        Parameters
-        ----------
-        X : array_like, shape (n_query, n_features)
-            Query samples.
-
-        Returns
-        -------
-        y_pred : ndarray, shape (n_query,)
-            Predicted values (float).
-
-        Raises
-        ------
-        RuntimeError
-            If called before fit.
+        R^2 score.
         """
-        X_train, y_train = self._check_is_fitted()
-        Xq = _ensure_2d_float(X, "X")
-        if Xq.shape[1] != X_train.shape[1]:
-            raise ValueError(f"X has {Xq.shape[1]} features, expected {X_train.shape[1]}.")
-
-        dist, idx = _neighbors(X_train, Xq, self.n_neighbors, self.metric)
-        w = _weights_from_distances(dist, self.weights)
-        # Weighted average per query
-        y_neighbors = y_train[idx]  # (nq, k)
-        wsum = np.sum(w, axis=1)
-        # avoid divide-by-zero: if all weights zero, fallback to simple mean
-        with np.errstate(divide="ignore", invalid="ignore"):
-            y_pred = np.divide(np.sum(w * y_neighbors, axis=1), wsum, where=wsum != 0)
-        fallback = (wsum == 0)
-        if np.any(fallback):
-            y_pred[fallback] = np.mean(y_neighbors[fallback], axis=1)
-        return y_pred.astype(float, copy=False)
-
-    def score(self, X: ArrayLike, y: ArrayLike) -> float:
-        """
-        R^2 score on (X, y).
-
-        Returns
-        -------
-        float
-            Coefficient of determination (R^2).
-
-        Raises
-        ------
-        ValueError
-            - If y is constant and you're not scoring on the exact training inputs.
-            - If y is constant and predictions are not perfect.
-        """
-        X_train, _ = self._check_is_fitted()
-        Xq = _ensure_2d_float(X, "X")
-        y_true = np.asarray(_ensure_1d(y, "y"), dtype=float)
-
-        if Xq.shape[0] != y_true.shape[0]:
-            raise ValueError("X and y lengths do not match.")
-
-        y_pred = self.predict(Xq)
-
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        y_mean = np.mean(y_true)
-        ss_tot = np.sum((y_true - y_mean) ** 2)
-
-        if ss_tot == 0:
-            # y_true is constant.
-            # Allow a well-defined perfect score ONLY when evaluating exactly on the
-            # training inputs and predictions are perfect. Otherwise raise.
-            if np.array_equal(Xq, X_train) and ss_res == 0:
-                return 1.0
-            raise ValueError(
-                "R^2 is undefined when y_true is constant unless scoring on the "
-                "training inputs with a perfect fit."
-            )
-
-        return float(1.0 - ss_res / ss_tot)
+        y_true = np.asarray(y, dtype=float)
+        if y_true.ndim != 1:
+            raise ValueError("y must be 1D for regression score.")
+        y_pred = self.predict(X)
+        return _r2_score(y_true, y_pred)
