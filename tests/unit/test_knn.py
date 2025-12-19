@@ -1,9 +1,19 @@
 # file name: test_knn.py
 
 import numpy as np
-import pytest
+import pytest 
 
-from rice_ml.supervised_learning.knn import KNNClassifier, KNNRegressor
+import numpy as np
+import sys
+import os
+
+src_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../src'))
+
+if src_path not in sys.path:
+    sys.path.append(src_path)
+
+from rice_ml.supervised_learning.k_nearest_neighbors import KNNClassifier, KNNRegressor
+
 
 # ------------------------ Classifier ------------------------
 
